@@ -1,0 +1,24 @@
+[target.riscv32imc-unknown-none-elf]
+# --ignore-app-descriptor: esp-hal bare-metal binaries do not carry an
+# ESP-IDF app descriptor; espflash 4.x requires this flag to skip the
+# descriptor check. Add --monitor to open the serial console after flash.
+#runner = "espflash flash --monitor --ignore-app-descriptor"
+runner = "espflash flash --monitor --chip esp32c3"
+# esp-hal 0.23 places linkall.x + memory.x in its OUT_DIR via its
+# build script.  linkall.x uses `INCLUDE memory.x` internally, so
+# the chip memory map (IROM, DROM, IRAM, DRAM, RTC_SLOW) is already
+# present.  Only -Tlinkall.x is needed here; supplying a second
+# -Tmemory.x would redefine those regions and cause a linker error.
+rustflags = [
+"-C", "link-arg=-Tlinkall.x",
+# "-C", "force-frame-pointers",
+]
+
+[build]
+target = "riscv32imc-unknown-none-elf"
+
+[env]
+ESP_LOG = "INFO"
+
+[unstable]
+build-std = ["core"]
