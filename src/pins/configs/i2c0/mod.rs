@@ -6,11 +6,11 @@ use esp_hal::time::Rate;
 // <<< GENERATED>>>
 // Peripheral config (from the Virtual Module) — auto-updated; edit in the module.
 pub const FREQUENCY_HZ: u32 = 400000;
-// 7-bit address of the device on this bus — for YOUR code, not for `init`:
-// an esp-hal I2C master takes the address per transaction.
-pub const DEVICE_ADDRESS: u8 = 0x00;
+// One file per device on this bus, each holding its DEVICE_ADDRESS.
+pub mod device1_128x32_diplay;
 // <<< GENERATED END >>>
 
+#[allow(dead_code)]
 /// I2C0 master — blocking driver.
 pub fn init<'d>(
     i2c: impl Instance + 'd,

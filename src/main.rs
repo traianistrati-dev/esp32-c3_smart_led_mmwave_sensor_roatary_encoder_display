@@ -29,7 +29,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 // <<< GENERATED BEGIN — do not edit between these markers >>>
 // ── Devices on this board ──
 // Microwave Radar: GPIO4 (TX), GPIO5 (RX), GPIO6 (IN)
-// Control Pannel: GPIO1 (IN), GPIO2 (IN), GPIO3 (IN), GPIO20 (SDA), GPIO21 (SCL)
+// Control Pannel: GPIO1 (IN), GPIO2 (IN), GPIO3 (IN), I2C0 128x32 diplay @ 0x3C
 
 use embassy_executor::Spawner;
 use esp_hal::interrupt::software::SoftwareInterruptControl;
@@ -138,7 +138,6 @@ async fn main(_spawner: Spawner) {
 async fn radar_data_listen(
     uart: esp_hal::uart::Uart<'static, esp_hal::Async>
     , i2c_bus: esp_hal::i2c::master::I2c<'static, esp_hal::Async>
-
     , menu_nav: pins::configs::custom_menu_nav::Encoder<Input<'static>, Input<'static>, Input<'static>>
 ){
 
@@ -161,10 +160,10 @@ async fn radar_data_listen(
 
     //radar.set_range_delay_with_default_thresholds(0, 5).await;
 
-    let mut display = pins::utils::i2c1_display::new_display(i2c_bus).await;
-    pins::utils::i2c1_display::write_text(&mut display, "Display init", 0, 0).ok().unwrap_or_default();
+    let mut display = pins::utils::i2c_display::new_display(i2c_bus).await;
+    pins::utils::i2c_display::write_text(&mut display, "Display init", 0, 0).ok().unwrap_or_default();
     display.flush().await.unwrap_or_default();
-    pins::utils::i2c1_display::clear(&mut display).unwrap_or_default();
+    pins::utils::i2c_display::clear(&mut display).unwrap_or_default();
 
     delay_micros(2000000).await;
 
@@ -180,9 +179,9 @@ async fn radar_data_listen(
 
                 let mut out = [0u8; 32];
 
-                pins::utils::i2c1_display::write_text(
+                pins::utils::i2c_display::write_text(
                     &mut display,
-                    pins::utils::i2c1_display::format_text_with_u32(
+                    pins::utils::i2c_display::format_text_with_u32(
                         "RangeGate: ",
                         radar_range_gate_val,
                         "",
@@ -204,9 +203,9 @@ async fn radar_data_listen(
 
                 let mut out = [0u8; 32];
 
-                pins::utils::i2c1_display::write_text(
+                pins::utils::i2c_display::write_text(
                     &mut display,
-                    pins::utils::i2c1_display::format_text_with_u32(
+                    pins::utils::i2c_display::format_text_with_u32(
                         "AbsenseDelay: ",
                         radar_delay_gate_val,
                         "",
@@ -228,9 +227,9 @@ async fn radar_data_listen(
 
 
 
-            pins::utils::i2c1_display::write_text(
+            pins::utils::i2c_display::write_text(
                 &mut display,
-                pins::utils::i2c1_display::format_text_with_f32(
+                pins::utils::i2c_display::format_text_with_f32(
                     "00 tt=",
                     hmmd_mmwave_sensor_async::parse_result::decode_threschold_value(radar_tt_00_val),
                     " ",
@@ -249,9 +248,9 @@ async fn radar_data_listen(
 
             let mut out = [0u8; 32];
 
-            pins::utils::i2c1_display::write_text(
+            pins::utils::i2c_display::write_text(
                 &mut display,
-                pins::utils::i2c1_display::format_text_with_f32(
+                pins::utils::i2c_display::format_text_with_f32(
                     "ht=",
                     hmmd_mmwave_sensor_async::parse_result::decode_threschold_value(radar_ht_00_val),
                     "",
@@ -283,7 +282,7 @@ async fn radar_data_listen(
     //----------MENU---------------------------------------
 
 
-    use menu_navigator::menu::*;
+    use menu_navigator::menu::{MenuNav, Node, Action, Value,};
 
     let mut nav = MenuNav::new();
 
@@ -310,12 +309,42 @@ async fn radar_data_listen(
     //-------------------------------------------------
 
 
+    /* struct Vec<T>{
+        ptr: *mut T
+    }
+
+
+    impl <T>Vec<T>{
+        pub fn new()-> Self{
+            Self<T>{
+
+
+            }
+        }
+        pub fn set_raw_pointer(&mut self, ptr: *mut T){
+            self.ptr = ptr;
+        }
+    } */
+
+
     let print_menu = async |
     display: &mut Ssd1306Async< I2CInterface<esp_hal::i2c::master::I2c<'_, esp_hal::Async>>, DisplaySize128x32, ssd1306::mode::BufferedGraphicsModeAsync<DisplaySize128x32>>
     , nav: &mut MenuNav
     |{
+        // let nodes = nav.items().iter().filter(visible);
 
-        pins::utils::i2c1_display::clear(display).unwrap_or_default();
+        // let is_disabled = nav.items()[0].get_name() == crate::menu_navigator::menu::DISABLED_NAME;
+
+        // let visible = |e: &&Node| {
+
+        // if is_disabled{
+
+        // return e.get_name() == crate::menu_navigator::menu::DISABLED_NAME || e.name == crate::menu_navigator::menu::BACK.name;
+        // }
+        // true
+
+        // };
+        // let nodes = nav.items().iter().filter(visible);
 
 
         let skip_first_items = if nav.cursor() > DISPLAY_VERTICAL_ROWS
@@ -325,44 +354,115 @@ async fn radar_data_listen(
         else{ 0 };
 
 
-        for (local_index, (original_index, node)) in nav.items().iter().enumerate().skip(skip_first_items).enumerate() {
+        {
+            pins::utils::i2c_display::clear(display).unwrap_or_default();
 
-            if original_index == nav.cursor(){
-                pins::utils::i2c1_display::write_text_boxed_white_background(
-                    display
-                    , node.name
-                    , (local_index * DISPLAY_ROW_HEIGHT) as i32
-                    , DISPLAY_ROW_HEIGHT as u32
-                ).ok().unwrap_or_default();
+            for (local_index, (original_index, node)) in nav.items().enumerate().skip(skip_first_items).enumerate() {
 
-            }else{
 
-                pins::utils::i2c1_display::write_text(
-                    display
-                    , node.name
+                if original_index == nav.cursor(){
+                    pins::utils::i2c_display::write_text_boxed_white_background(
+                        display
+                        , node.get_name()
+                        , (local_index * DISPLAY_ROW_HEIGHT) as i32
+                        , DISPLAY_ROW_HEIGHT as u32
+                    ).ok().unwrap_or_default();
 
-                    , 0
-                    , (local_index * DISPLAY_ROW_HEIGHT) as i32
-                ).ok().unwrap_or_default();
+                }else{
 
+                    pins::utils::i2c_display::write_text(
+                        display
+                        , node.get_name()
+
+                        , 0
+                        , (local_index * DISPLAY_ROW_HEIGHT) as i32
+                    ).ok().unwrap_or_default();
+
+                }
+                // if node.get_name() == crate::menu_navigator::menu::DISABLED_NAME{
+                // break;
+                // }
+
+
+                // esp_println::println!("print_menu: cursor: {:?}, nav.depth:{}, skip_first_items:  {:?},  original_index:{}, local_index: {},  node.name:'{}' ", nav.cursor(), nav.depth, skip_first_items, original_index, local_index, node.name);
             }
+            display.flush().await.unwrap_or_default();
         }
 
-        display.flush().await.unwrap_or_default();
+
 
     };
+
+    let print_menu_enabled = async |
+    display: &mut Ssd1306Async< I2CInterface<esp_hal::i2c::master::I2c<'_, esp_hal::Async>>, DisplaySize128x32, ssd1306::mode::BufferedGraphicsModeAsync<DisplaySize128x32>>
+    , nav: &mut MenuNav
+    |{
+
+        // let visible = |e: &&Node| {
+
+        // return e.name == crate::menu_navigator::menu::ENABLED_NAME || e.name == crate::menu_navigator::menu::BACK.name;
+        // };
+
+        // let nodes = nav.items().iter().filter(visible);
+
+
+        let skip_first_items = if nav.cursor() > DISPLAY_VERTICAL_ROWS
+        {
+            nav.cursor() - DISPLAY_VERTICAL_ROWS
+        }
+        else{ 0 };
+
+
+        {
+            pins::utils::i2c_display::clear(display).unwrap_or_default();
+
+            for (local_index, (original_index, node)) in nav.items().enumerate().skip(skip_first_items).enumerate() {
+
+                if original_index == nav.cursor(){
+                    pins::utils::i2c_display::write_text_boxed_white_background(
+                        display
+                        , node.get_name_enable()
+                        , (local_index * DISPLAY_ROW_HEIGHT) as i32
+                        , DISPLAY_ROW_HEIGHT as u32
+                    ).ok().unwrap_or_default();
+
+                }else{
+
+                    pins::utils::i2c_display::write_text(
+                        display
+                        , node.get_name_enable()
+
+                        , 0
+                        , (local_index * DISPLAY_ROW_HEIGHT) as i32
+                    ).ok().unwrap_or_default();
+
+                }
+
+                // esp_println::println!("print_menu: cursor: {:?}, nav.depth:{}, skip_first_items:  {:?},  original_index:{}, local_index: {},  node.name:'{}' ", nav.cursor(), nav.depth, skip_first_items, original_index, local_index, node.name);
+            }
+            display.flush().await.unwrap_or_default();
+        }
+
+
+
+    };
+
+
+
     //-------------------------------------------------
+
 
 
     let print_menu_value = async |
     display: &mut Ssd1306Async< I2CInterface<esp_hal::i2c::master::I2c<'_, esp_hal::Async>>, DisplaySize128x32, ssd1306::mode::BufferedGraphicsModeAsync<DisplaySize128x32>>
     , node_name: &str
-    , node_value: u32
+    // , node_value: u32
+    , node_value: &'static Value
     |{
 
-        pins::utils::i2c1_display::clear(display).unwrap_or_default();
+        pins::utils::i2c_display::clear(display).unwrap_or_default();
 
-        pins::utils::i2c1_display::write_text(
+        pins::utils::i2c_display::write_text(
             display
             , node_name
             , 0
@@ -370,11 +470,18 @@ async fn radar_data_listen(
         ).ok().unwrap_or_default();
 
 
-        let mut num_buf = [0u8; 10];
+        let mut num_buf_f32 = [0u8; 24];
+        let mut num_buf_u32 = [0u8; 10];
 
-        pins::utils::i2c1_display::write_text_large(
+        pins::utils::i2c_display::write_text_large(
             display
-            , pins::utils::i2c1_display::fmt_u32(node_value, &mut num_buf)
+            , if node_value.as_float
+            {
+                pins::utils::i2c_display::fmt_f32(node_value.get_float() / 100.0, 2, &mut num_buf_f32)
+            }
+            else{
+                pins::utils::i2c_display::fmt_u32(node_value.get(), &mut num_buf_u32)
+            }
             , 10
             , 20
         ).ok().unwrap_or_default();
@@ -397,8 +504,9 @@ async fn radar_data_listen(
 
 
         match event {
+            //---------------------------------------------
             Event::RadarByte(b) => {
-                //  if last_selected_action == Action::None
+                //if matches!(last_selected_action, Action::None)//  if last_selected_action == Action::None
                 {
                     if parser.feed(b)
                     && let Some(frame) = parser.decode_payload()
@@ -410,39 +518,75 @@ async fn radar_data_listen(
                         // let energy_gate_15 = frame.energy[15];
 
                         // esp_println::println!("frame.present:  {:?}", frame.present);
-                        esp_println::println!("frame.distance_cm:  {:?}", frame.distance_cm);
+                        //     esp_println::println!("frame.distance_cm:  {:?}, frame.energy:  {:?}", frame.distance_cm, frame.energy);
+                        // esp_println::println!("frame.distance_cm:  {:?}", frame.distance_cm);
                         // esp_println::println!("frame.energy:  {:?}", frame.energy);
                     }
                 }
             }
-
+            //---------------------------------------------
             Event::Encoder(EncoderEvent::Pressed) => {
 
 
-                match last_selected_action {
+                esp_println::println!(">EncoderEvent::Pressed last_selected_action:  {:?}, cursor:  {:?}, nav.depth: {:?}", last_selected_action, nav.cursor(), nav.depth);
 
-                    Action::EditValue(_) => {
-                        /*Exit after Edit Value on pressed aggain */
-                        last_selected_action = Action::None;
-                    }
+                last_selected_action = match last_selected_action {
+                    Action::EditValue(_) => Action::None,
+                    Action::Enabled(value_enabled) =>
+                    {
+                        if nav.cursor() == 0 {
+                            value_enabled.toggle_enabled();
+                        }
+
+                        Action::None
+                    },
+
+
                     _ => {
-
-                        last_selected_action = nav.select();
-                    }
-                }
-
+                        nav.select()
+                    },
+                };
 
                 // buton OK
                 match last_selected_action{
+
+                    Action::None => {
+
+                        menu_nav.encoder.set_step(2);
+                        print_menu(&mut display, &mut nav).await;
+                    },
+
+                    Action::Enabled(_) => {
+
+                        // menu_nav.encoder.set_step(1);
+
+                        print_menu_enabled(&mut display, &mut nav).await;
+                        // print_menu(&mut display, &mut nav).await;
+                    },
+
+
+                    Action::EditValue(v) => {
+
+                        menu_nav.encoder.set_step(1);
+
+                        if v.get() == 0 {
+
+                            v.set(v.min);
+                        }
+
+                        print_menu_value(&mut display, nav.selected_node().name, &v).await;
+
+                    },
+
                     Action::ExitSettings => {
-                        /* salvezi în flash, ieși din setări */
+                        /* Save to flash, on Exit Settings  */
 
                         nav.reset();
 
-                        pins::utils::i2c1_display::clear(&mut display).unwrap_or_default();
+                        pins::utils::i2c_display::clear(&mut display).unwrap_or_default();
 
 
-                        pins::utils::i2c1_display::write_text(
+                        pins::utils::i2c_display::write_text(
                             &mut display
                             , "Values Saved on Flash"
                             , 0
@@ -452,60 +596,75 @@ async fn radar_data_listen(
                         display.flush().await.unwrap_or_default();
 
                     }
-                    Action::EditValue(v) => { /* mod editare: v.inc(1) / v.dec(1) */
 
-                        print_menu_value(&mut display, nav.selected_node().name, v.get()).await;
-
-
-
-                    }
-                    Action::None => {
-                        print_menu(&mut display, &mut nav).await;
-
-                    }
                 }
 
 
 
-                esp_println::println!("last_selected_action:  {:?}", last_selected_action);
+                esp_println::println!("2 last_selected_action:  {:?}", last_selected_action);
 
 
                 delay_micros(500_000).await; //debounce delay
             }
-
+            //---------------------------------------------
             Event::Encoder(EncoderEvent::Left) => {
 
                 match last_selected_action {
 
                     Action::EditValue(v) => {
-                        v.dec(1);
-                        print_menu_value(&mut display, nav.selected_node().name, v.get()).await;
+                        // v.dec(1);
+                        v.dec_by_step();
+                        print_menu_value(&mut display, nav.selected_node().name, &v).await;
 
-                    }
-                    _ => {
+                    },
+                    Action::None => {
                         nav.prev();
+
                         print_menu(&mut display, &mut nav).await;
+                    },
+                    Action::Enabled(_) => {
+
+                        nav.prev();
+                        // nav.prev_enabled();
+                        print_menu_enabled(&mut display, &mut nav).await;
+                    },
+                    _ => {
 
                     }
                 }
+                esp_println::println!("EncoderEvent::Left last_selected_action:  {:?}", last_selected_action);
 
             },
+            //---------------------------------------------
             Event::Encoder(EncoderEvent::Right) =>
             {
 
                 match last_selected_action {
 
                     Action::EditValue(v) => {
-                        v.inc(1);
-                        print_menu_value(&mut display, nav.selected_node().name, v.get()).await;
-                    }
-                    _ => {
+                        // v.inc(1);
+                        v.inc_by_step();
+                        print_menu_value(&mut display, nav.selected_node().name, &v).await;
+                    },
+                    Action::None => {
                         nav.next();
+
                         print_menu(&mut display, &mut nav).await;
+                    },
+                    Action::Enabled(_) => {
+                        // nav.next_enabled();
+                        nav.next();
+                        // print_menu(&mut display, &mut nav).await;
+                        print_menu_enabled(&mut display, &mut nav).await;
+                    },
+                    _ => {
 
                     }
                 }
+                esp_println::println!("EncoderEvent::Right last_selected_action:  {:?}, last.item: {}", last_selected_action, nav.items().last().unwrap().name);
+
             }
+            //---------------------------------------------
             Event::Encoder(EncoderEvent::None) => {}
         }
 
@@ -560,8 +719,6 @@ async fn led_on_timer() {
         LED_STATE.signal(false);
     }
 }
-
-
 
 
 

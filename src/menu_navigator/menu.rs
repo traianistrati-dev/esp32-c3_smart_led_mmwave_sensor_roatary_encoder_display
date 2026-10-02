@@ -3,39 +3,81 @@
 //! - în RAM ajung doar valorile (AtomicU32) și MenuNav
 //! - fără lifetimes, fără inițializare la runtime
 
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU32, AtomicBool, Ordering};
 
 // ------------------------------------------------------------------
 // Valori
 // ------------------------------------------------------------------
+
+
 #[derive(Debug)]
 pub struct Value {
     v: AtomicU32,
     pub min: u32,
     pub max: u32,
+    pub step: u32,
+    pub as_float: bool,
 }
 
 impl Value {
-    pub const fn new(min: u32, max: u32, init: u32) -> Self {
-        Self { v: AtomicU32::new(init), min, max }
+    pub const fn new(min: u32, max: u32, init: u32, step: u32, as_float: bool) -> Self {
+        Self { v: AtomicU32::new(init), min, max, step, as_float}
     }
 
     pub fn get(&self) -> u32 {
         self.v.load(Ordering::Relaxed)
     }
 
+    pub fn get_float(&self) -> f32 {
+        self.get() as f32
+    }
+
     pub fn set(&self, x: u32) {
         self.v.store(x.clamp(self.min, self.max), Ordering::Relaxed)
     }
 
-    pub fn inc(&self, step: u32) {
-        self.set(self.get().saturating_add(step))
+    pub fn inc_by_step(&self) {
+        self.set(self.get().saturating_add(self.step))
     }
 
-    pub fn dec(&self, step: u32) {
-        self.set(self.get().saturating_sub(step))
+    // pub fn inc(&self, step: u32) {
+    // self.set(self.get().saturating_add(step))
+    // }
+
+    pub fn dec_by_step(&self) {
+        self.set(self.get().saturating_sub(self.step))
+    }
+
+    // pub fn dec(&self, step: u32) {
+    // self.set(self.get().saturating_sub(step))
+    // }
+}
+
+
+#[derive(Debug)]
+pub struct ValueBool {
+    v: AtomicBool
+}
+
+impl ValueBool {
+    pub const fn new() -> Self{
+
+        Self{v: AtomicBool::new(true)}
+    }
+
+    pub fn get(&self) -> bool {
+        self.v.load(Ordering::Relaxed)
+    }
+
+    pub fn set(&self, x: bool) {
+        self.v.store(x, Ordering::Relaxed)
+    }
+
+    pub fn toggle_enabled(&self){
+        self.set(!self.get());
     }
 }
+
 
 pub struct ModeValues {
     pub fade_in: Value,
@@ -45,7 +87,12 @@ pub struct ModeValues {
     pub crb_max_light: Value,
     pub crb_after_sec: Value,
     pub crb_under_cm: Value,
+    pub enabled: ValueBool,
+    pub enabled_boost: ValueBool,
 }
+
+
+
 
 /* impl ModeValues {
     // Ajustează limitele și valorile implicite pentru fiecare opțiune.
@@ -64,26 +111,34 @@ pub struct ModeValues {
 
 /// Logica lămpii citește direct de aici, ex: `NORMAL.fade_in.get()`
 pub static NORMAL: ModeValues = ModeValues {
-    fade_in: Value::new(1, 10, 0),
-    duration_on: Value::new(0, 360, 0),
-    fade_out: Value::new(0, 60, 0),
-    max_light: Value::new(10, 60, 0),
+    fade_in: Value::new(1, 10, 0, 1, false),
+    duration_on: Value::new(0, 180, 0, 1, false),
+    fade_out: Value::new(1, 30, 0, 1, false),
+    max_light: Value::new(10, 90, 0, 1, false),
 
-    crb_max_light: Value::new(20, 100, 0),
-    crb_after_sec: Value::new(3, 20, 0),
-    crb_under_cm: Value::new(70, 10000, 0),
+    crb_max_light: Value::new(50, 100, 0, 5, false),
+    crb_after_sec: Value::new(3, 20, 0, 1, false),
+    crb_under_cm: Value::new(40, 500, 0, 10, true),
+    enabled: ValueBool::new(),
+    enabled_boost: ValueBool::new(),
 };
 
 pub static NIGHT: ModeValues = ModeValues {
-    fade_in: Value::new(1, 10, 0),
-    duration_on: Value::new(0, 120, 0),
-    fade_out: Value::new(0, 10, 0),
-    max_light: Value::new(0, 20, 0),
+    fade_in: Value::new(1, 10, 0, 1, false),
+    duration_on: Value::new(0, 120, 0, 1, false),
+    fade_out: Value::new(1, 10, 0, 1, false),
+    max_light: Value::new(1, 20, 0, 1, false),
 
-    crb_max_light: Value::new(20, 100, 0),
-    crb_after_sec: Value::new(3, 20, 0),
-    crb_under_cm: Value::new(70, 10000, 0),
+    crb_max_light: Value::new(20, 100, 0, 5, false),
+    crb_after_sec: Value::new(3, 20, 0, 1, false),
+    crb_under_cm: Value::new(40, 500, 0, 10, true),
+    enabled: ValueBool::new(),
+    enabled_boost: ValueBool::new(),
+
 };
+
+
+
 
 // ------------------------------------------------------------------
 // Noduri
@@ -94,56 +149,111 @@ pub enum Kind {
     Back,
     Submenu(&'static [Node]),
     Value(&'static Value),
+    ValueBool(&'static ValueBool),
 }
 
 pub struct Node {
     pub name: &'static str,
     pub kind: Kind,
+    // visible: Option<fn() -> bool>
 }
 
+
 impl Node {
+
     pub const fn submenu(name: &'static str, items: &'static [Node]) -> Self {
-        Self { name, kind: Kind::Submenu(items) }
+        Self { name, kind: Kind::Submenu(items)}
     }
 
     pub const fn value(name: &'static str, v: &'static Value) -> Self {
-        Self { name, kind: Kind::Value(v) }
+        Self { name, kind: Kind::Value(v)}
     }
+
+
+    pub const fn value_enabled(name: &'static str, v: &'static ValueBool) -> Self {
+        Self { name, kind: Kind::ValueBool(v)}
+    }
+
+    pub fn get_name(&self) -> &'static str{
+
+
+        if let Kind::ValueBool(b) = self.kind{
+            return if b.get() {ENABLED_NAME} else {DISABLED_NAME}
+        }
+        self.name
+    }
+
+    pub fn get_name_enable(&self) -> &'static str{
+
+
+        if let Kind::ValueBool(b) = self.kind{
+            return if b.get() {"Disable"} else {"Enable"}
+        }
+        self.name
+    }
+
+
+
+
+    /* // pub const fn when(mut self, f: fn() -> bool) -> Self {
+    // self.visible = Some(f);
+    // self
+    // }
+    // pub fn is_visible(&self) -> bool {
+    // self.visible.map_or(true, |f| f())
+    // } */
+
+
 }
 
-const BACK: Node = Node { name: "<<", kind: Kind::Back };
+
+pub const BACK: Node = Node { name: "<<", kind: Kind::Back};
 
 // ------------------------------------------------------------------
 // Meniuri
 // ------------------------------------------------------------------
+// enum EnabledStatus{
+// Disabled(&str)
+// ,Enabled(&str)
+// }
+pub const ENABLED_NAME: &str = "Enabled";
+pub const DISABLED_NAME: &str = "Disabled";
 
 macro_rules! mode_menu {
     ($menu: ident, $crb: ident, $v: ident) => {
-        static $crb: [Node; 4] = [
-            BACK,
+
+
+        static $crb: [Node; 5] = [
+            Node::value_enabled(ENABLED_NAME, &$v.enabled_boost),
             Node::value("Max Light %", &$v.crb_max_light),
             Node::value("Activate after sec", &$v.crb_after_sec),
             Node::value("Activate under cm", &$v.crb_under_cm),
+            BACK,
         ];
 
-        static $menu: [Node; 6] = [
-            BACK,
+
+        static $menu: [Node; 7] = [
+            Node::value_enabled(ENABLED_NAME, &$v.enabled),
             Node::value("Fade IN sec", &$v.fade_in),
-            Node::value("Duration ON sec", &$v.duration_on),
+            Node::value("Absence ON sec", &$v.duration_on),
             Node::value("Fade OUT sec", &$v.fade_out),
             Node::value("Max Light %", &$v.max_light),
             Node::submenu("Close-Range Boost", &$crb),
+            BACK,
         ];
+
     };
 }
 
 mode_menu!(NORMAL_MENU, NORMAL_CRB_MENU, NORMAL);
 mode_menu!(NIGHT_MENU, NIGHT_CRB_MENU, NIGHT);
 
+
 pub static ROOT: [Node; 3] = [
-    BACK, // << iese din setări
+    // BACK, // <<
     Node::submenu("Normal", &NORMAL_MENU),
     Node::submenu("Night", &NIGHT_MENU),
+    BACK, // <<
 ];
 
 // ------------------------------------------------------------------
@@ -157,17 +267,20 @@ pub enum Action {
     None,
     ExitSettings,
     EditValue(&'static Value),
+    Enabled(&'static ValueBool)
 }
 
 pub struct MenuNav {
+
     stack: [(&'static [Node], usize); DEPTH], // (meniu, cursor)
-    depth: usize,
+    pub depth: usize,
+    init: bool,
 }
 
 impl MenuNav {
     pub fn new() -> Self {
         let root: &'static [Node] = &ROOT;
-        Self { stack: [(root, 0); DEPTH], depth: 1 }
+        Self { stack: [(root, 0); DEPTH], depth: 0, init: false}
     }
 
     /// Readuce meniul la ROOT (ex. la fiecare intrare în setări).
@@ -175,22 +288,39 @@ impl MenuNav {
         *self = Self::new();
     }
 
-    pub fn items(&self) -> &'static [Node] {
+
+    pub fn items(&self) -> impl Iterator<Item = &'static Node> + Clone {
+        let disabled = self.contains_node_disabled();
+
         self.stack[self.depth].0
+        .iter()
+        .filter(move |e| {
+                if disabled{
+                    return e.get_name() == DISABLED_NAME || e.name == BACK.name;
+                }
+                true
+
+        })
     }
 
     pub fn cursor(&self) -> usize {
         self.stack[self.depth].1
     }
 
+
     pub fn next(&mut self) {
-        let (m, c) = &mut self.stack[self.depth];
-        *c = (*c + 1) % m.len();
+        let items_count = self.items().count();
+        let (_, c) = &mut self.stack[self.depth];
+
+        *c = (*c + 1) % items_count;
     }
 
     pub fn prev(&mut self) {
-        let (m, c) = &mut self.stack[self.depth];
-        *c = (*c + m.len() - 1) % m.len();
+        let items_count = self.items().count();
+
+        let (_, c) = &mut self.stack[self.depth];
+
+        *c = (*c + items_count - 1) % items_count;
     }
 
     pub fn select(&mut self) -> Action {
@@ -200,24 +330,44 @@ impl MenuNav {
             Kind::Back => {
                 self.depth -= 1; // cursorul părintelui rămâne salvat
                 Action::None
-            }
+            },
             Kind::Submenu(sub) => {
-                if self.depth + 1 < DEPTH {
+                if self.init && self.depth + 1 < DEPTH {
                     self.depth += 1;
                     self.stack[self.depth] = (sub, 0);
+                } else if !self.init{
+                    self.init = true;
                 }
+
+
                 Action::None
-            }
-            Kind::Value(v) => Action::EditValue(v),
+            },
+
+            Kind::Value(v) => {
+				//go back if disabled
+                if menu[0].get_name() == DISABLED_NAME && c == 1{
+                    self.depth -= 1; 
+                    return Action::None;
+                }
+                Action::EditValue(v)
+
+            },
+            Kind::ValueBool(value_enabled) => Action::Enabled(value_enabled),
         }
     }
 
 
-    pub fn selected_node(&self) -> &'static Node{
-
+    pub fn selected_node(& self) -> &'static Node{
         let (menu, c) = self.stack[self.depth];
         &menu[c]
     }
+
+    pub fn contains_node_disabled(&self) -> bool{
+        let (menu, _) = self.stack[self.depth];
+        menu[0].get_name() == DISABLED_NAME
+    }
+
+
 }
 
 // ------------------------------------------------------------------

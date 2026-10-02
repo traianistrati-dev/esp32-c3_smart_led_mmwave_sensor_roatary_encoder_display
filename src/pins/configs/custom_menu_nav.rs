@@ -1,7 +1,7 @@
 
 
 use embedded_hal::digital::{InputPin};
-use crate::menu_navigator::rotary_encoder::{RotaryEncoder, EncoderEvent};
+use crate::menu_navigator::rotary_encoder::{RotaryEncoder};
 
 // <<< GENERATED>>>
 // Custom module "menu nav" — one field per pin, in the order they

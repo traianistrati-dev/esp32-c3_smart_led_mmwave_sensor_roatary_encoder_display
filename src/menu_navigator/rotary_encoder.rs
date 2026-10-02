@@ -60,7 +60,10 @@ pub struct RotaryEncoder<CLK, DT, SW> {
     accum: i8, // accumulated sub-steps
     last_sw: bool,
     // pub value: i32,
+    step: i8
 }
+
+const DEFAULT_STEP: i8 = 2;
 
 impl<CLK: InputPin, DT: InputPin, SW: InputPin> RotaryEncoder<CLK, DT, SW> {
 
@@ -68,8 +71,16 @@ impl<CLK: InputPin, DT: InputPin, SW: InputPin> RotaryEncoder<CLK, DT, SW> {
         let state = ((clk.is_high().unwrap_or(false) as u8) << 1) | (dt.is_high().unwrap_or(false) as u8);
         let last_sw = sw.is_high().unwrap_or(false);
 
-        Self { clk, dt, sw, state, accum: 0, last_sw}
+        Self { clk, dt, sw, state, accum: 0, last_sw, step: DEFAULT_STEP}
         // Self { clk, dt, sw, state, accum: 0, last_sw, value: 0 }
+    }
+
+    pub fn set_step(&mut self, step: u8){
+
+        self.step = if step < 5 {
+            (step * 2) as i8
+        } else{ DEFAULT_STEP }
+
     }
 
     pub fn update(&mut self) -> EncoderEvent {
@@ -88,14 +99,15 @@ impl<CLK: InputPin, DT: InputPin, SW: InputPin> RotaryEncoder<CLK, DT, SW> {
             self.accum += TRANSITIONS[idx as usize];
             self.state = now;
 
+
             // 4 == 2 sub-steps for 1 „clic"
             // 2 == 1 sub-steps for 1 „clic"
-            if self.accum >= 2 {
+            if self.accum >= self.step {
                 self.accum = 0;
                 // self.value += 1;
                 return EncoderEvent::Right;
             }
-            else if self.accum <= -2 {
+            else if self.accum <= -self.step {
                 self.accum = 0;
                 // self.value -= 1;
                 return EncoderEvent::Left;

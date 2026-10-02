@@ -81,7 +81,7 @@ impl Settings{
     }
 
     pub fn get_on_time_micros(&self) -> u32{
-        (self.working.on_time_sec as u32 * 1_000_000) as u32
+        self.working.on_time_sec as u32 * 1_000_000
     }
 
 

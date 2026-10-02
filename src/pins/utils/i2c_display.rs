@@ -23,8 +23,7 @@ I2CInterface<esp_hal::i2c::master::I2c<'_, esp_hal::Async>>
 , ssd1306::mode::BufferedGraphicsModeAsync<DisplaySize128x32>
 >
 {
-    let interface = I2CDisplayInterface::new(i2c_bus);
-
+    let interface = I2CDisplayInterface::new_custom_address(i2c_bus, crate::pins::configs::i2c0::device1_128x32_diplay::DEVICE_ADDRESS);
 
     let mut display = Ssd1306Async::new(interface, DisplaySize128x32, DisplayRotation::Rotate0).into_buffered_graphics_mode();
     display.init().await.unwrap_or_default();
