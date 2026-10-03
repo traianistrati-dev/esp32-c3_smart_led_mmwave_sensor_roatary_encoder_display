@@ -3,7 +3,9 @@
 # ESP-IDF app descriptor; espflash 4.x requires this flag to skip the
 # descriptor check. Add --monitor to open the serial console after flash.
 #runner = "espflash flash --monitor --ignore-app-descriptor"
-runner = "espflash flash --monitor --chip esp32c3"
+#runner = "espflash flash --monitor --chip esp32c3"
+
+runner = "espflash flash --monitor --partition-table partitions.csv"
 # esp-hal 0.23 places linkall.x + memory.x in its OUT_DIR via its
 # build script.  linkall.x uses `INCLUDE memory.x` internally, so
 # the chip memory map (IROM, DROM, IRAM, DRAM, RTC_SLOW) is already

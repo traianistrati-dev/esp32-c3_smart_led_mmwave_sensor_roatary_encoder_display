@@ -35,13 +35,21 @@ ssd1306 = { version = "0.10.0", features = ["async"] }
 
 hmmd_mmwave_sensor_async = "0.1.0"
 
+# save to flash
+esp-storage         = { version = "0.9", features = ["esp32c3"] }
+sequential-storage  = { version = "8", features = ["postcard"] }
+embassy-embedded-hal = "0.6"
+embedded-storage    = "0.3"
+serde = { version = "1", default-features = false, features = ["derive"] }
+# save to flash END
+
 
 
 [profile.release]
 codegen-units = 1
-debug         = 2
+debug         = true  # <rust_on_chip debug-build was: debug         = 2>
 lto           = "fat"
-opt-level     = "s"
+opt-level     = 1  # <rust_on_chip debug-build was: opt-level     = "s">
 
 [profile.dev]
 opt-level     = "s"

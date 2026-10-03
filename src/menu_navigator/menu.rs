@@ -4,19 +4,88 @@
 //! - fără lifetimes, fără inițializare la runtime
 
 use core::sync::atomic::{AtomicU32, AtomicBool, Ordering};
+use serde::{Deserialize, Serialize};
+
+
+// ------------------------------------------------------------------
+// Meniuri
+// ------------------------------------------------------------------
+
+pub const BACK: Node = Node { name: "<<", kind: Kind::Back};
+pub const ENABLED_NAME: &str = "Enabled";
+pub const DISABLED_NAME: &str = "Disabled";
+
+macro_rules! mode_menu {
+    ($menu: ident, $crb: ident, $v: ident) => {
+
+
+        static $crb: [Node; 5] = [
+            Node::value_enabled(ENABLED_NAME, &$v.enabled_boost),
+            Node::value("Max Light %", &$v.crb_max_light),
+            Node::value("Activate after sec", &$v.crb_after_sec),
+            Node::value("Activate under cm", &$v.crb_under_cm),
+            BACK,
+        ];
+
+
+        static $menu: [Node; 7] = [
+            Node::value_enabled(ENABLED_NAME, &$v.enabled),
+            Node::value("Fade IN sec", &$v.fade_in),
+            Node::value("Absence ON sec", &$v.duration_on),
+            Node::value("Fade OUT sec", &$v.fade_out),
+            Node::value("Max Light %", &$v.max_light),
+            Node::submenu("Close-Range Boost", &$crb),
+            BACK,
+        ];
+
+    };
+}
+
+mode_menu!(NORMAL_MENU, NORMAL_CRB_MENU, NORMAL);
+mode_menu!(NIGHT_MENU, NIGHT_CRB_MENU, NIGHT);
+
+
+
+static SENSOR_MENU: [Node; 3] = [
+    Node::value("Detection Range", &SENSOR.range),
+    Node::value("Detection sensivity", &SENSOR.sensivity),
+    BACK,
+];
+
+
+pub static ROOT: [Node; 3] = [
+
+    Node::submenu("Working Modes", &[
+            Node::submenu("Normal", &NORMAL_MENU),
+            Node::submenu("Night", &NIGHT_MENU),
+            BACK,
+    ]),
+    Node::submenu("Sensor", &SENSOR_MENU),
+    BACK, // <<
+];
+
+
 
 // ------------------------------------------------------------------
 // Valori
 // ------------------------------------------------------------------
 
+use super::serializations::atomic_u32_serde;
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Value {
+    #[serde(with = "atomic_u32_serde")]
     v: AtomicU32,
     pub min: u32,
     pub max: u32,
     pub step: u32,
     pub as_float: bool,
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        self.v.load(Ordering::Relaxed) == other.v.load(Ordering::Relaxed)
+    }
 }
 
 impl Value {
@@ -36,33 +105,42 @@ impl Value {
         self.v.store(x.clamp(self.min, self.max), Ordering::Relaxed)
     }
 
-    pub fn inc_by_step(&self) {
+    pub fn inc_step(&self) {
         self.set(self.get().saturating_add(self.step))
     }
 
-    // pub fn inc(&self, step: u32) {
-    // self.set(self.get().saturating_add(step))
-    // }
-
-    pub fn dec_by_step(&self) {
+    pub fn dec_step(&self) {
         self.set(self.get().saturating_sub(self.step))
     }
 
-    // pub fn dec(&self, step: u32) {
-    // self.set(self.get().saturating_sub(step))
-    // }
 }
 
 
-#[derive(Debug)]
+use super::serializations::atomic_bool_serde;
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ValueBool {
+    #[serde(with = "atomic_bool_serde")]
     v: AtomicBool
 }
+
+impl PartialEq for ValueBool {
+    fn eq(&self, other: &Self) -> bool {
+        self.v.load(Ordering::Relaxed)
+        == other.v.load(Ordering::Relaxed)
+    }
+}
+
 
 impl ValueBool {
     pub const fn new() -> Self{
 
         Self{v: AtomicBool::new(true)}
+    }
+
+    pub fn new_(b: bool) -> Self{
+
+        Self{v: AtomicBool::new(b)}
     }
 
     pub fn get(&self) -> bool {
@@ -78,7 +156,7 @@ impl ValueBool {
     }
 }
 
-
+#[derive(Serialize, Deserialize, PartialEq)]
 pub struct ModeValues {
     pub fade_in: Value,
     pub duration_on: Value,
@@ -92,24 +170,55 @@ pub struct ModeValues {
 }
 
 
+impl ModeValues {
+    pub fn clone(&self) -> Self{
+        Self{
+            fade_in: Value::new(self.fade_in.min, self.fade_in.max, self.fade_in.get(), self.fade_in.step, self.fade_in.as_float)
+            , duration_on: Value::new(self.duration_on.min, self.duration_on.max, self.duration_on.get(), self.duration_on.step, self.duration_on.as_float)
+            , fade_out: Value::new(self.fade_out.min, self.fade_out.max, self.fade_out.get(), self.fade_out.step, self.fade_out.as_float)
+            , max_light: Value::new(self.max_light.min, self.max_light.max, self.max_light.get(), self.max_light.step, self.max_light.as_float)
+            , crb_max_light: Value::new(self.crb_max_light.min, self.crb_max_light.max, self.crb_max_light.get(), self.crb_max_light.step, self.crb_max_light.as_float)
+            , crb_after_sec: Value::new(self.crb_after_sec.min, self.crb_after_sec.max, self.crb_after_sec.get(), self.crb_after_sec.step, self.crb_after_sec.as_float)
+            , crb_under_cm: Value::new(self.crb_under_cm.min, self.crb_under_cm.max, self.crb_under_cm.get(), self.crb_under_cm.step, self.crb_under_cm.as_float)
 
+            , enabled: ValueBool::new_(self.enabled.get())
+            , enabled_boost: ValueBool::new_(self.enabled_boost.get())
 
-/* impl ModeValues {
-    // Ajustează limitele și valorile implicite pentru fiecare opțiune.
-    pub const fn new() -> Self {
-        Self {
-            fade_in: Value::new(0, 100, 0),
-            duration_on: Value::new(0, 100, 0),
-            fade_out: Value::new(0, 100, 0),
-            max_light: Value::new(0, 100, 0),
-            crb_max_light: Value::new(0, 100, 0),
-            crb_after_sec: Value::new(0, 100, 0),
-            crb_under_cm: Value::new(0, 100, 0),
+        }
+
+    }
+
+    pub fn load(&self, values: ModeValues){
+        self.fade_in.set(values.fade_in.get());
+        self.duration_on.set(values.duration_on.get());
+        self.fade_out.set(values.fade_out.get());
+        self.max_light.set(values.max_light.get());
+        self.crb_max_light.set(values.crb_max_light.get());
+        self.crb_after_sec.set(values.crb_after_sec.get());
+        self.crb_under_cm.set(values.crb_under_cm.get());
+        self.enabled.set(values.enabled.get());
+        self.enabled_boost.set(values.enabled_boost.get())
+    }
+
+}
+
+#[derive(Serialize, Deserialize, PartialEq)]
+pub struct SensorValues {
+    pub sensivity: Value,
+    pub range: Value,
+}
+
+impl SensorValues {
+    pub fn clone(&self) -> Self{
+        Self{
+            sensivity: Value::new(self.sensivity.min, self.sensivity.max, self.sensivity.get(), self.sensivity.step, self.sensivity.as_float)
+            , range: Value::new(self.range.min, self.range.max, self.range.get(), self.range.step, self.range.as_float)
         }
     }
-} */
+}
 
-/// Logica lămpii citește direct de aici, ex: `NORMAL.fade_in.get()`
+
+
 pub static NORMAL: ModeValues = ModeValues {
     fade_in: Value::new(1, 10, 0, 1, false),
     duration_on: Value::new(0, 180, 0, 1, false),
@@ -138,6 +247,13 @@ pub static NIGHT: ModeValues = ModeValues {
 };
 
 
+pub static SENSOR: SensorValues = SensorValues {
+    sensivity: Value::new(20, 90, 0, 1, false),
+    range: Value::new(0, 15, 0, 1, false),
+
+};
+
+
 
 
 // ------------------------------------------------------------------
@@ -155,7 +271,6 @@ pub enum Kind {
 pub struct Node {
     pub name: &'static str,
     pub kind: Kind,
-    // visible: Option<fn() -> bool>
 }
 
 
@@ -192,69 +307,11 @@ impl Node {
         self.name
     }
 
-
-
-
-    /* // pub const fn when(mut self, f: fn() -> bool) -> Self {
-    // self.visible = Some(f);
-    // self
-    // }
-    // pub fn is_visible(&self) -> bool {
-    // self.visible.map_or(true, |f| f())
-    // } */
-
-
 }
 
 
-pub const BACK: Node = Node { name: "<<", kind: Kind::Back};
-
-// ------------------------------------------------------------------
-// Meniuri
-// ------------------------------------------------------------------
-// enum EnabledStatus{
-// Disabled(&str)
-// ,Enabled(&str)
-// }
-pub const ENABLED_NAME: &str = "Enabled";
-pub const DISABLED_NAME: &str = "Disabled";
-
-macro_rules! mode_menu {
-    ($menu: ident, $crb: ident, $v: ident) => {
 
 
-        static $crb: [Node; 5] = [
-            Node::value_enabled(ENABLED_NAME, &$v.enabled_boost),
-            Node::value("Max Light %", &$v.crb_max_light),
-            Node::value("Activate after sec", &$v.crb_after_sec),
-            Node::value("Activate under cm", &$v.crb_under_cm),
-            BACK,
-        ];
-
-
-        static $menu: [Node; 7] = [
-            Node::value_enabled(ENABLED_NAME, &$v.enabled),
-            Node::value("Fade IN sec", &$v.fade_in),
-            Node::value("Absence ON sec", &$v.duration_on),
-            Node::value("Fade OUT sec", &$v.fade_out),
-            Node::value("Max Light %", &$v.max_light),
-            Node::submenu("Close-Range Boost", &$crb),
-            BACK,
-        ];
-
-    };
-}
-
-mode_menu!(NORMAL_MENU, NORMAL_CRB_MENU, NORMAL);
-mode_menu!(NIGHT_MENU, NIGHT_CRB_MENU, NIGHT);
-
-
-pub static ROOT: [Node; 3] = [
-    // BACK, // <<
-    Node::submenu("Normal", &NORMAL_MENU),
-    Node::submenu("Night", &NIGHT_MENU),
-    BACK, // <<
-];
 
 // ------------------------------------------------------------------
 // Navigare
@@ -262,7 +319,7 @@ pub static ROOT: [Node; 3] = [
 
 const DEPTH: usize = 4;
 
-#[derive(Debug)]
+// #[derive(Debug)]
 pub enum Action {
     None,
     ExitSettings,
@@ -344,9 +401,9 @@ impl MenuNav {
             },
 
             Kind::Value(v) => {
-				//go back if disabled
+                //go back if disabled
                 if menu[0].get_name() == DISABLED_NAME && c == 1{
-                    self.depth -= 1; 
+                    self.depth -= 1;
                     return Action::None;
                 }
                 Action::EditValue(v)
@@ -371,12 +428,12 @@ impl MenuNav {
 }
 
 // ------------------------------------------------------------------
-// Exemplu de utilizare
+// Usecase Example
 // ------------------------------------------------------------------
 //
 // let mut nav = MenuNav::new();
 //
-// // desenare
+// // print o ndisplay
 // for (i, node) in nav.items().iter().enumerate() {
 //     let marker = if i == nav.cursor() { ">" } else { " " };
 //     match node.kind {
@@ -385,7 +442,7 @@ impl MenuNav {
 //     }
 // }
 //
-// // buton OK
+// // button OK
 // match nav.select() {
 //     Action::ExitSettings => { /* salvezi în flash, ieși din setări */ }
 //     Action::EditValue(v) => { /* mod editare: v.inc(1) / v.dec(1) */ }
