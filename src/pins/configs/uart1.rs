@@ -1,4 +1,4 @@
-use esp_hal::{Async, Blocking};
+use esp_hal::Async;
 use esp_hal::gpio::interconnect::{PeripheralInput, PeripheralOutput};
 use esp_hal::uart::{Config, DataBits, Instance, Parity, StopBits, Uart};
 
@@ -10,10 +10,12 @@ pub const PARITY: Parity = Parity::None;
 pub const STOP_BITS: StopBits = StopBits::_1;
 // <<< GENERATED END >>>
 
+/* 
 /// UART1 — blocking driver.
 ///
 /// Generic over the pins so this file never names a GPIO: `main.rs`
 /// passes the ones wired on the Pins canvas.
+#[warn(dead_code)]
 pub fn init<'d>(
     uart: impl Instance + 'd,
     rx: impl PeripheralInput<'d>,
@@ -31,7 +33,7 @@ pub fn init<'d>(
         .unwrap()
         .with_rx(rx)
         .with_tx(tx)
-}
+} */
 
 /// UART1 — async driver.
 ///

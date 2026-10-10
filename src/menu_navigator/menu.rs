@@ -52,8 +52,19 @@ static SENSOR_MENU: [Node; 3] = [
     BACK,
 ];
 
+static LIGHT_MENU: [Node; 2] = [
+    Node::value("Max Light %", &LIGHT.max_light_p),
+    BACK,
+];
 
-pub static ROOT: [Node; 3] = [
+static SYSTEM_MENU: [Node; 2] = [
+    Node::value_time("Curent Time HH:mm", &SYSTEM.curent_time),
+    BACK,
+];
+
+
+
+pub static ROOT: [Node; 5] = [
 
     Node::submenu("Working Modes", &[
             Node::submenu("Normal", &NORMAL_MENU),
@@ -61,6 +72,8 @@ pub static ROOT: [Node; 3] = [
             BACK,
     ]),
     Node::submenu("Sensor", &SENSOR_MENU),
+    Node::submenu("Light", &LIGHT_MENU),
+    Node::submenu("System", &SYSTEM_MENU),
     BACK, // <<
 ];
 
@@ -70,91 +83,8 @@ pub static ROOT: [Node; 3] = [
 // Valori
 // ------------------------------------------------------------------
 
-use super::serializations::atomic_u32_serde;
+use crate::menu_navigator::menu_types::{bool_value::ValueBool, number_value::Value, time_value::ValueTime};
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Value {
-    #[serde(with = "atomic_u32_serde")]
-    v: AtomicU32,
-    pub min: u32,
-    pub max: u32,
-    pub step: u32,
-    pub as_float: bool,
-}
-
-impl PartialEq for Value {
-    fn eq(&self, other: &Self) -> bool {
-        self.v.load(Ordering::Relaxed) == other.v.load(Ordering::Relaxed)
-    }
-}
-
-impl Value {
-    pub const fn new(min: u32, max: u32, init: u32, step: u32, as_float: bool) -> Self {
-        Self { v: AtomicU32::new(init), min, max, step, as_float}
-    }
-
-    pub fn get(&self) -> u32 {
-        self.v.load(Ordering::Relaxed)
-    }
-
-    pub fn get_float(&self) -> f32 {
-        self.get() as f32
-    }
-
-    pub fn set(&self, x: u32) {
-        self.v.store(x.clamp(self.min, self.max), Ordering::Relaxed)
-    }
-
-    pub fn inc_step(&self) {
-        self.set(self.get().saturating_add(self.step))
-    }
-
-    pub fn dec_step(&self) {
-        self.set(self.get().saturating_sub(self.step))
-    }
-
-}
-
-
-use super::serializations::atomic_bool_serde;
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ValueBool {
-    #[serde(with = "atomic_bool_serde")]
-    v: AtomicBool
-}
-
-impl PartialEq for ValueBool {
-    fn eq(&self, other: &Self) -> bool {
-        self.v.load(Ordering::Relaxed)
-        == other.v.load(Ordering::Relaxed)
-    }
-}
-
-
-impl ValueBool {
-    pub const fn new() -> Self{
-
-        Self{v: AtomicBool::new(true)}
-    }
-
-    pub fn new_(b: bool) -> Self{
-
-        Self{v: AtomicBool::new(b)}
-    }
-
-    pub fn get(&self) -> bool {
-        self.v.load(Ordering::Relaxed)
-    }
-
-    pub fn set(&self, x: bool) {
-        self.v.store(x, Ordering::Relaxed)
-    }
-
-    pub fn toggle_enabled(&self){
-        self.set(!self.get());
-    }
-}
 
 #[derive(Serialize, Deserialize, PartialEq)]
 pub struct ModeValues {
@@ -181,8 +111,8 @@ impl ModeValues {
             , crb_after_sec: Value::new(self.crb_after_sec.min, self.crb_after_sec.max, self.crb_after_sec.get(), self.crb_after_sec.step, self.crb_after_sec.as_float)
             , crb_under_cm: Value::new(self.crb_under_cm.min, self.crb_under_cm.max, self.crb_under_cm.get(), self.crb_under_cm.step, self.crb_under_cm.as_float)
 
-            , enabled: ValueBool::new_(self.enabled.get())
-            , enabled_boost: ValueBool::new_(self.enabled_boost.get())
+            , enabled: ValueBool::new_from(self.enabled.get())
+            , enabled_boost: ValueBool::new_from(self.enabled_boost.get())
 
         }
 
@@ -201,6 +131,7 @@ impl ModeValues {
     }
 
 }
+//-----------------------------------------------------------
 
 #[derive(Serialize, Deserialize, PartialEq)]
 pub struct SensorValues {
@@ -217,6 +148,36 @@ impl SensorValues {
     }
 }
 
+//-----------------------------------------------------------
+
+#[derive(Serialize, Deserialize, PartialEq)]
+pub struct LightValues {
+    pub max_light_p: Value,
+}
+
+impl LightValues {
+    pub fn clone(&self) -> Self{
+        Self{
+            max_light_p: Value::new(self.max_light_p.min, self.max_light_p.max, self.max_light_p.get() , self.max_light_p.step, self.max_light_p.as_float)
+        }
+    }
+}
+
+//-----------------------------------------------------------
+
+#[derive(Serialize, Deserialize, PartialEq)]
+pub struct SystemValues {
+    pub curent_time: ValueTime,
+}
+
+impl SystemValues {
+    pub fn clone(&self) -> Self{
+        Self{
+            curent_time: ValueTime::new_from(self.curent_time.get().0 , self.curent_time.get().1)
+        }
+    }
+}
+//-----------------------------------------------------------
 
 
 pub static NORMAL: ModeValues = ModeValues {
@@ -225,7 +186,7 @@ pub static NORMAL: ModeValues = ModeValues {
     fade_out: Value::new(1, 30, 0, 1, false),
     max_light: Value::new(10, 90, 0, 1, false),
 
-    crb_max_light: Value::new(50, 100, 0, 5, false),
+    crb_max_light: Value::new(50, 100, 0, 1, false),
     crb_after_sec: Value::new(3, 20, 0, 1, false),
     crb_under_cm: Value::new(40, 500, 0, 10, true),
     enabled: ValueBool::new(),
@@ -238,7 +199,7 @@ pub static NIGHT: ModeValues = ModeValues {
     fade_out: Value::new(1, 10, 0, 1, false),
     max_light: Value::new(1, 20, 0, 1, false),
 
-    crb_max_light: Value::new(20, 100, 0, 5, false),
+    crb_max_light: Value::new(20, 100, 0, 1, false),
     crb_after_sec: Value::new(3, 20, 0, 1, false),
     crb_under_cm: Value::new(40, 500, 0, 10, true),
     enabled: ValueBool::new(),
@@ -254,6 +215,16 @@ pub static SENSOR: SensorValues = SensorValues {
 };
 
 
+pub static LIGHT: LightValues = LightValues {
+    max_light_p: Value::new(1, 100, 100, 1, false),
+
+};
+
+pub static SYSTEM: SystemValues = SystemValues {
+    curent_time: ValueTime::new(),
+
+};
+
 
 
 // ------------------------------------------------------------------
@@ -265,6 +236,7 @@ pub enum Kind {
     Back,
     Submenu(&'static [Node]),
     Value(&'static Value),
+    ValueTime(&'static ValueTime),
     ValueBool(&'static ValueBool),
 }
 
@@ -282,6 +254,11 @@ impl Node {
 
     pub const fn value(name: &'static str, v: &'static Value) -> Self {
         Self { name, kind: Kind::Value(v)}
+    }
+
+
+    pub const fn value_time(name: &'static str, v: &'static ValueTime) -> Self {
+        Self { name, kind: Kind::ValueTime(v)}
     }
 
 
@@ -324,7 +301,9 @@ pub enum Action {
     None,
     ExitSettings,
     EditValue(&'static Value),
-    Enabled(&'static ValueBool)
+    EditValueTime(&'static ValueTime),
+    Enabled(&'static ValueBool),
+	Off
 }
 
 pub struct MenuNav {
@@ -410,6 +389,7 @@ impl MenuNav {
 
             },
             Kind::ValueBool(value_enabled) => Action::Enabled(value_enabled),
+            Kind::ValueTime(value_time) => Action::EditValueTime(value_time),
         }
     }
 

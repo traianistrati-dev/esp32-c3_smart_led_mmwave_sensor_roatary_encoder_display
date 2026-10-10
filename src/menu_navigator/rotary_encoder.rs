@@ -10,39 +10,6 @@ pub enum EncoderEvent {
     Pressed,
 }
 
-impl EncoderEvent{
-
-    #[allow(dead_code)]
-    #[inline]
-    pub const fn is_pressed(self) -> bool {
-        matches!(self, EncoderEvent::Pressed)
-    }
-
-    #[allow(dead_code)]
-    #[inline]
-    pub const fn is_left(self) -> bool {
-        matches!(self, EncoderEvent::Left)
-    }
-
-    #[allow(dead_code)]
-    #[inline]
-    pub const fn is_right(self) -> bool {
-        matches!(self, EncoderEvent::Right)
-    }
-
-    /// -1 / 0 / +1 — usefull for direct index increment
-    #[allow(dead_code)]
-    #[inline]
-    pub const fn delta(self) -> i32 {
-        match self {
-            EncoderEvent::Right => 1,
-            EncoderEvent::Left => -1,
-            _ => 0,
-        }
-    }
-
-}
-
 
 
 const TRANSITIONS: [i8; 16] = [
@@ -72,7 +39,6 @@ impl<CLK: InputPin, DT: InputPin, SW: InputPin> RotaryEncoder<CLK, DT, SW> {
         let last_sw = sw.is_high().unwrap_or(false);
 
         Self { clk, dt, sw, state, accum: 0, last_sw, step: DEFAULT_STEP}
-        // Self { clk, dt, sw, state, accum: 0, last_sw, value: 0 }
     }
 
     pub fn set_step(&mut self, step: u8){

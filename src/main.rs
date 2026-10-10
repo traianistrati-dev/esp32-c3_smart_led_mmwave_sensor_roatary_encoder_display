@@ -46,6 +46,12 @@ async fn main(_spawner: Spawner) {
     let sw_int = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
     esp_rtos::start(timg0.timer0, sw_int.software_interrupt0);
 
+    // ── Flash store ──
+    #[allow(unused_imports)]
+    use crate::pins::configs::flash_store;
+    #[allow(unused_mut, unused_variables)]
+    let mut flash = esp_storage::FlashStorage::new(peripherals.FLASH);
+
     // ── GPIO ──
     #[allow(unused_mut, unused_variables)]
     let mut gpio8_out_board_led = Output::new(peripherals.GPIO8, Level::High, OutputConfig::default()); // GPIO Output
@@ -85,17 +91,16 @@ async fn main(_spawner: Spawner) {
     // <<< GENERATED END >>>
 
     // _mwdt0.enable();
-    // IS_UART_ONLINE.store(false, Ordering::Relaxed);
+    /* IS_UART_ONLINE.store(false, Ordering::Acquire);
+    IS_UART_ONLINE.store(true, Ordering::Release); */
 
     esp_println::println!("START");
 
-    let flash = esp_storage::FlashStorage::new(peripherals.FLASH);
-
     //delay_micros(3000000).await;
 
-    _spawner.spawn(led_on_timer().expect("expect SET ON TIMER"));
+    _spawner.spawn(led_on_timer().expect("expect LED ON TIMER"));
 
-    _spawner.spawn(power_led_fade().expect("expect POWER LED FADE"));
+    _spawner.spawn(power_led_fade().expect("expect LED FADE in/out"));
 
     _spawner.spawn(radar_data_listen(_uart1_mw_radar, _i2c0_128x32_diplay, menu_nav, flash).expect("expect LISTEN RADAR DATA"));
 
@@ -105,6 +110,7 @@ async fn main(_spawner: Spawner) {
 
     // _mwdt0.feed();
 
+    // LED PWM Task
     loop{
 
         /* !!! IMPORTANT !!!
@@ -282,7 +288,8 @@ async fn radar_data_listen(
     //----------MENU---------------------------------------
 
 
-    use menu_navigator::menu::{MenuNav, Node, Action, Value,};
+    use menu_navigator::menu::{MenuNav, Action};
+    use menu_navigator::menu_types::{number_value::Value, time_value::ValueTime};
 
     let mut nav = MenuNav::new();
 
@@ -376,12 +383,19 @@ async fn radar_data_listen(
             for (local_index, (original_index, node)) in nav.items().enumerate().skip(skip_first_items).enumerate() {
 
                 if original_index == nav.cursor(){
-                    pins::utils::i2c_display::write_text_boxed_white_background(
+                    pins::utils::i2c_display::write_text_boxed_border(
                         display
                         , node.get_name_enable()
                         , (local_index * DISPLAY_ROW_HEIGHT) as i32
                         , DISPLAY_ROW_HEIGHT as u32
                     ).ok().unwrap_or_default();
+
+                    /* pins::utils::i2c_display::write_text_boxed_white_background(
+                        display
+                        , node.get_name_enable()
+                        , (local_index * DISPLAY_ROW_HEIGHT) as i32
+                        , DISPLAY_ROW_HEIGHT as u32
+                    ).ok().unwrap_or_default(); */
 
                 }else{
 
@@ -447,17 +461,52 @@ async fn radar_data_listen(
 
     };
 
-    let mut last_selected_action: Action = Action::None;
+    // ------------------------------------------------------------
 
-    let mut flash_store = menu_navigator::flash_storage:: ConfigStore::new(flash);
+    let print_menu_value_time = async |
+    display: &mut Ssd1306Async< I2CInterface<esp_hal::i2c::master::I2c<'_, esp_hal::Async>>, DisplaySize128x32, ssd1306::mode::BufferedGraphicsModeAsync<DisplaySize128x32>>
+    , node_name: &str
+    // , node_value: u32
+    , node_value: &'static ValueTime
+    |{
+
+        pins::utils::i2c_display::clear(display).unwrap_or_default();
+
+        pins::utils::i2c_display::write_text(
+            display
+            , node_name
+            , 0
+            , 0
+        ).ok().unwrap_or_default();
+
+
+        let (hour, min) = node_value.get();
+
+        let mut num_buf_u32 = [0u8; 10];
+
+        pins::utils::i2c_display::write_text_large(
+            display
+            , pins::utils::i2c_display::format_text_time_HH_mm(hour, min, &mut num_buf_u32)
+            , 10
+            , 20
+        ).ok().unwrap_or_default();
+
+        display.flush().await.unwrap_or_default();
+
+    };
+
+    let mut last_selected_action: Action = Action::Off;
+
+    let mut flash_store = pins::configs::flash_store:: ConfigStore::new(flash);
 
     { //Load Stored Data from Flash
         let stored_data = flash_store.load().await;
 
 
-        esp_println::println!("normal_values: sensivity:{:?}, range:{:?}"
+        esp_println::println!("normal_values: sensivity:{:?}, range:{:?}, max_light_p:{:?}"
             , stored_data.sensor.sensivity.get()
             , stored_data.sensor.range.get()
+            , stored_data.light.max_light_p.get()
         );
 
         menu_navigator::menu::SENSOR.range.set(stored_data.sensor.range.get());
@@ -465,6 +514,8 @@ async fn radar_data_listen(
 
         menu_navigator::menu::NORMAL.load(stored_data.normal);
         menu_navigator::menu::NIGHT.load(stored_data.night);
+
+        menu_navigator::menu::LIGHT.max_light_p.set(stored_data.light.max_light_p.get());
 
     }
 
@@ -504,6 +555,7 @@ async fn radar_data_listen(
 
                 last_selected_action = match last_selected_action {
                     Action::EditValue(_) => Action::None,
+                    Action::EditValueTime(_) => Action::None,
                     Action::Enabled(value_enabled) =>
                     {
                         if nav.cursor() == 0 {
@@ -519,6 +571,10 @@ async fn radar_data_listen(
                 };
 
                 match last_selected_action{
+
+                    Action::Off => {
+                        last_selected_action = Action::None;
+                    },
 
                     Action::None => {
 
@@ -541,14 +597,22 @@ async fn radar_data_listen(
                             v.set(v.min);
                         }
 
-                        print_menu_value(&mut display, nav.selected_node().name, &v).await;
+                        print_menu_value(&mut display, nav.selected_node().name, v).await;
+
+                    },
+                    Action::EditValueTime(value_time) =>{
+                        menu_nav.encoder.set_step(1);
+
+                        print_menu_value_time(&mut display, nav.selected_node().name, value_time).await;
 
                     },
 
                     Action::ExitSettings => {
 
+                        last_selected_action = Action::Off;
+
                         /* Save to flash, on Exit Settings  */
-                        flash_store.save().await;
+                        flash_store.save_menu_data().await;
 
                         nav.reset();
 
@@ -569,9 +633,10 @@ async fn radar_data_listen(
                             delay_micros(5_000_000).await;
                             pins::utils::i2c_display::clear(&mut display).unwrap_or_default();
                             display.flush().await.unwrap_or_default();
+
+
                         }
                     }
-
                 }
 
                 delay_micros(500_000).await; //debounce delay
@@ -583,8 +648,12 @@ async fn radar_data_listen(
 
                     Action::EditValue(v) => {
                         v.dec_step();
-                        print_menu_value(&mut display, nav.selected_node().name, &v).await;
+                        print_menu_value(&mut display, nav.selected_node().name, v).await;
 
+                    },
+                    Action::EditValueTime(v) => {
+                        v.dec_hour();
+                        print_menu_value_time(&mut display, nav.selected_node().name, v).await;
                     },
                     Action::None => {
                         nav.prev();
@@ -610,7 +679,11 @@ async fn radar_data_listen(
 
                     Action::EditValue(v) => {
                         v.inc_step();
-                        print_menu_value(&mut display, nav.selected_node().name, &v).await;
+                        print_menu_value(&mut display, nav.selected_node().name, v).await;
+                    },
+                    Action::EditValueTime(v) => {
+                        v.inc_hour();
+                        print_menu_value_time(&mut display, nav.selected_node().name, v).await;
                     },
                     Action::None => {
                         nav.next();
@@ -646,7 +719,6 @@ pub async fn _is_led_on_timer() -> bool{
     embassy_futures::yield_now().await;
     IS_LED_ON_TIMER.load(Ordering::Relaxed)
 }
-
 
 
 use embassy_futures::select::{select, Either};

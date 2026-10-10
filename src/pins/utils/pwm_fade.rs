@@ -34,9 +34,9 @@ impl<'d> Dimmer<'d> {
 
     #[inline]
     pub fn set_duty_hw_(&mut self, duty: u32) {
-        if duty >= 0{
+        // if duty >= 0{
             self.ch.set_duty_hw(duty);
-        }
+        // }
     }
 
 }

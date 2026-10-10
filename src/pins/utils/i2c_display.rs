@@ -152,9 +152,10 @@ D: DrawTarget<Color = BinaryColor>,
     .stroke_color(BinaryColor::On)
     .stroke_width(1)
     .stroke_alignment(StrokeAlignment::Inside)
+
     .build();
 
-    Rectangle::new(Point::new(0, y), Size::new(width, height))
+    Rectangle::new(Point::new(0, y), Size::new(width, height + 1))
     .into_styled(border)
     .draw(display)?;
 
@@ -168,19 +169,17 @@ D: DrawTarget<Color = BinaryColor>,
 
 //////////////////// formaters //////////////
 
-pub fn format_text_with_u32_2inline<'a>(
-    prefix: &str,
-    number: f32,
-    prefix_2: &str,
-    number_2: f32,
+pub fn format_text_time_HH_mm<'a>(
+    number: u8,
+    number_2: u8,
     out: &'a mut [u8],
 ) -> &'a str {
-    let mut num_buf = [0u8; 24];
-    let num_str = fmt_f32(number, 2, &mut num_buf);
+    let mut num_buf = [0u8; 10];
+    let num_str = fmt_u32(number as u32, &mut num_buf);
 
-    let mut num_buf_2 = [0u8; 24];
-    let num_str_2 = fmt_f32(number_2, 2, &mut num_buf_2);
-    concat_4(prefix, num_str, prefix_2, num_str_2, out)
+    let mut num_buf_2 = [0u8; 10];
+    let num_str_2 = fmt_u32(number_2 as u32, &mut num_buf_2);
+    concat_4("", num_str, ":", num_str_2, out)
 }
 
 
@@ -277,12 +276,12 @@ pub fn concat_3<'a>(
 
 
 
-pub fn fmt_u32( n: u32, buf: &mut [u8; 10]) -> &str {
+pub fn fmt_u32(n: u32, buf: &mut [u8; 10]) -> &str {
     if n == 0 {
         buf[0] = b'0';
         return core::str::from_utf8(&buf[..1]).unwrap();
     }
-	let mut n = n;
+    let mut n = n;
     let mut i = buf.len();
     while n > 0 {
         i -= 1;
