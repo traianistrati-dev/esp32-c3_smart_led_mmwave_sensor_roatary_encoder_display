@@ -6,6 +6,8 @@ use core::sync::atomic::{ AtomicU8, Ordering};
 type DataTypeAtomic = AtomicU8;
 type DataTypePrimitive = u8;
 
+use super::bool_value::{ValueBool};
+
 ////////////////////////////////////////////////////////////////
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -14,7 +16,9 @@ pub struct ValueTime {
     hour: DataTypeAtomic,
 
     #[serde(with = "atomic_u8_serde")]
-    minute: DataTypeAtomic
+    minute: DataTypeAtomic,
+
+    pub config_min: ValueBool
 }
 
 
@@ -22,12 +26,12 @@ pub struct ValueTime {
 impl ValueTime {
     pub const fn new() -> Self{
 
-        Self{hour: DataTypeAtomic::new(0), minute: DataTypeAtomic::new(0)}
+        Self{hour: DataTypeAtomic::new(0), minute: DataTypeAtomic::new(0), config_min: ValueBool::new_false()}
     }
 
     pub fn new_from(hour: DataTypePrimitive, minute: DataTypePrimitive) -> Self{
 
-        Self{hour: DataTypeAtomic::new(hour), minute: DataTypeAtomic::new(minute)}
+        Self{hour: DataTypeAtomic::new(hour), minute: DataTypeAtomic::new(minute), config_min: ValueBool::new_false()}
     }
 
     pub fn get(&self) -> (DataTypePrimitive, DataTypePrimitive) {
@@ -48,6 +52,23 @@ impl ValueTime {
     }
 
 
+    pub fn inc(&self) {
+        if self.config_min.get(){
+            self.inc_minute();
+        }else{
+            self.inc_hour();
+        }
+    }
+
+    pub fn dec(&self) {
+        if self.config_min.get(){
+            self.dec_minute();
+        }else{
+            self.dec_hour();
+        }
+    }
+
+
     pub fn inc_hour(&self) {
         let (hour, _) = self.get();
         if hour < 23 {
@@ -57,7 +78,7 @@ impl ValueTime {
 
     pub fn inc_minute(&self) {
         let (_, min) = self.get();
-        if min < 58{
+        if min < 59{
             self.set_minute(min.saturating_add(1))
         }
     }
@@ -70,6 +91,10 @@ impl ValueTime {
     pub fn dec_minute(&self) {
         let (_, min) = self.get();
         self.set_minute(min.saturating_sub(1))
+    }
+
+    pub fn toggle_config_minute(&self){
+        self.config_min.set(!self.config_min.get());
     }
 
 

@@ -517,6 +517,8 @@ async fn radar_data_listen(
 
         menu_navigator::menu::LIGHT.max_light_p.set(stored_data.light.max_light_p.get());
 
+        menu_navigator::menu::SYSTEM.curent_time.set(stored_data.system.curent_time.get().0, stored_data.system.curent_time.get().1);
+
     }
 
     loop{
@@ -555,7 +557,16 @@ async fn radar_data_listen(
 
                 last_selected_action = match last_selected_action {
                     Action::EditValue(_) => Action::None,
-                    Action::EditValueTime(_) => Action::None,
+                    Action::EditValueTime(v) => {
+                        if !v.config_min.get() {
+                            //v.toggle_config_minute();
+                            v.config_min.set(true);
+                            Action::EditValueTime(v)
+                        }else{
+                            v.config_min.set(false);
+                            Action::None
+                        }
+                    },
                     Action::Enabled(value_enabled) =>
                     {
                         if nav.cursor() == 0 {
@@ -652,7 +663,7 @@ async fn radar_data_listen(
 
                     },
                     Action::EditValueTime(v) => {
-                        v.dec_hour();
+                        v.dec();
                         print_menu_value_time(&mut display, nav.selected_node().name, v).await;
                     },
                     Action::None => {
@@ -682,7 +693,7 @@ async fn radar_data_listen(
                         print_menu_value(&mut display, nav.selected_node().name, v).await;
                     },
                     Action::EditValueTime(v) => {
-                        v.inc_hour();
+                        v.inc();
                         print_menu_value_time(&mut display, nav.selected_node().name, v).await;
                     },
                     Action::None => {

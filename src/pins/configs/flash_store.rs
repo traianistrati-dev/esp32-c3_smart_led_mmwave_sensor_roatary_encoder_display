@@ -46,6 +46,7 @@ pub struct Data {
     , pub night: crate::menu_navigator::menu::ModeValues
     , pub sensor: crate::menu_navigator::menu::SensorValues
     , pub light: crate::menu_navigator::menu::LightValues
+    , pub system: crate::menu_navigator::menu::SystemValues
     //Custom data
 
 }
@@ -60,6 +61,7 @@ impl Default for Data {
             , night: crate::menu_navigator::menu::NIGHT.clone()
             , sensor: crate::menu_navigator::menu::SENSOR.clone()
             , light: crate::menu_navigator::menu::LIGHT.clone()
+            , system: crate::menu_navigator::menu::SYSTEM.clone()
             //Custom data
         }
     }

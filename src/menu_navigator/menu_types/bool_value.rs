@@ -23,6 +23,10 @@ impl ValueBool {
 
         Self{v: AtomicBool::new(true)}
     }
+    pub const fn new_false() -> Self{
+
+        Self{v: AtomicBool::new(false)}
+    }
 
     pub fn new_from(b: bool) -> Self{
 
