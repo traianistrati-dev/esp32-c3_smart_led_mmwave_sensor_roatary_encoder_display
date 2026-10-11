@@ -78,6 +78,7 @@ pub fn write_text_large<D>(
     text: &str,
     x: i32,
     y: i32,
+    underline_x1_x2_y: Option<(i32, i32, i32)>
 ) -> Result<(), D::Error>
 where
 D: DrawTarget<Color = BinaryColor>,
@@ -93,6 +94,22 @@ D: DrawTarget<Color = BinaryColor>,
         style,
     )
     .draw(display)?;
+
+    if let Some((x1, x2, y)) = underline_x1_x2_y {
+        // Draw underline
+        // let text_width = text.len() as i32 * 10;
+
+        embedded_graphics::primitives::Line::new(
+            Point::new(x1, y),
+            // Point::new(x + 20, y + 20),
+            Point::new(x2, y),
+        )
+        .into_styled(PrimitiveStyle::with_stroke(
+                BinaryColor::On,
+                2,
+        ))
+        .draw(display)?;
+    }
 
     Ok(())
 }
@@ -111,6 +128,8 @@ D: DrawTarget<Color = BinaryColor>,
 
     let bb = display.bounding_box();
     bb.into_styled(style).draw(display)?;
+
+
     Ok(())
 }
 
@@ -169,33 +188,45 @@ D: DrawTarget<Color = BinaryColor>,
 
 //////////////////// formaters //////////////
 
-pub fn format_text_time_HH_mm<'a>(
-    number: u8,
-    number_2: u8,
+pub fn format_text_time_HH_mm_ss<'a>(
+    hour: u8,
+    munute: u8,
+    seconds: u8,
     out: &'a mut [u8],
 ) -> &'a str {
-    let mut num_buf = [0u8; 10];
-    let num_str = fmt_u32(number as u32, &mut num_buf);
 
-    let mut num_buf_2 = [0u8; 10];
-    let num_str_2 = fmt_u32(number_2 as u32, &mut num_buf_2);
-    concat_4("", num_str, ":", num_str_2, out)
+    let mut num_buf_hour = [0u8; 2];
+    let mut num_buf_minute = [0u8; 2];
+    let mut num_buf_seconds = [0u8; 2];
+
+    concat_6(if hour < 10 {"0"} else{""}
+        , fmt_u8(hour, &mut num_buf_hour)
+        , if munute < 10 {":0"} else{":"}
+        , fmt_u8(munute, &mut num_buf_minute)
+        , if seconds < 10 {":0"} else{":"}
+        , fmt_u8(seconds, &mut num_buf_seconds)
+        , out
+    )
 }
 
 
-pub fn concat_4<'a>(
+pub fn concat_6<'a>(
     a: &str,
     b: &str,
     c: &str,
     d: &str,
+    e: &str,
+    f: &str,
     out: &'a mut [u8],
 ) -> &'a str {
     let a_bytes = a.as_bytes();
     let b_bytes = b.as_bytes();
     let c_bytes = c.as_bytes();
     let d_bytes = d.as_bytes();
+    let e_bytes = e.as_bytes();
+    let f_bytes = f.as_bytes();
 
-    let total_len = a_bytes.len() + b_bytes.len() + c_bytes.len()+ d_bytes.len();
+    let total_len = a_bytes.len() + b_bytes.len() + c_bytes.len() + d_bytes.len() + e_bytes.len() + f_bytes.len();
 
     if total_len > out.len() {
         return "-";
@@ -214,6 +245,12 @@ pub fn concat_4<'a>(
 
     out[pos..pos + d_bytes.len()].copy_from_slice(d_bytes);
     pos += d_bytes.len();
+
+    out[pos..pos + e_bytes.len()].copy_from_slice(e_bytes);
+    pos += e_bytes.len();
+
+    out[pos..pos + f_bytes.len()].copy_from_slice(f_bytes);
+    pos += f_bytes.len();
 
     core::str::from_utf8(&out[..pos]).unwrap_or("-")
 }
@@ -274,6 +311,23 @@ pub fn concat_3<'a>(
 }
 
 
+
+
+pub fn fmt_u8(n: u8, buf: &mut [u8; 2]) -> &str {
+    if n == 0 {
+        buf[0] = b'0';
+        return core::str::from_utf8(&buf[..1]).unwrap();
+    }
+    let mut n = n;
+    let mut i = buf.len();
+    while n > 0 {
+        i -= 1;
+        buf[i] = b'0' + (n % 10) as u8;
+        n /= 10;
+    }
+
+    core::str::from_utf8(&buf[i..]).unwrap()
+}
 
 
 pub fn fmt_u32(n: u32, buf: &mut [u8; 10]) -> &str {

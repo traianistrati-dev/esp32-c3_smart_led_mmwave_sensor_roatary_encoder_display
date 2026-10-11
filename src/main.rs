@@ -98,6 +98,8 @@ async fn main(_spawner: Spawner) {
 
     //delay_micros(3000000).await;
 
+    _spawner.spawn(increment_system_time().expect("expect Increment seconds"));
+
     _spawner.spawn(led_on_timer().expect("expect LED ON TIMER"));
 
     _spawner.spawn(power_led_fade().expect("expect LED FADE in/out"));
@@ -141,6 +143,17 @@ async fn main(_spawner: Spawner) {
 }
 
 //-----------------------
+
+#[embassy_executor::task]
+async fn increment_system_time(){
+    loop{
+        crate::menu_navigator::menu::SYSTEM.curent_time.inc_seconds();
+        delay_micros(0_999_990).await;
+
+        // esp_println::println!("increment_system_time: {:?}", crate::menu_navigator::menu::SYSTEM.curent_time);
+    }
+}
+
 
 #[embassy_executor::task]
 async fn radar_data_listen(
@@ -455,6 +468,7 @@ async fn radar_data_listen(
             }
             , 10
             , 20
+            , None
         ).ok().unwrap_or_default();
 
         display.flush().await.unwrap_or_default();
@@ -480,15 +494,19 @@ async fn radar_data_listen(
         ).ok().unwrap_or_default();
 
 
-        let (hour, min) = node_value.get();
+        let x_line = if node_value.config_min.get() {40} else{10};
+
+
+        let (hour, min, seconds) = node_value.get();
 
         let mut num_buf_u32 = [0u8; 10];
 
         pins::utils::i2c_display::write_text_large(
             display
-            , pins::utils::i2c_display::format_text_time_HH_mm(hour, min, &mut num_buf_u32)
+            , pins::utils::i2c_display::format_text_time_HH_mm_ss(hour, min, seconds, &mut num_buf_u32)
             , 10
-            , 20
+            , 17
+            , Some((x_line, x_line + 20, 31))
         ).ok().unwrap_or_default();
 
         display.flush().await.unwrap_or_default();
@@ -517,7 +535,7 @@ async fn radar_data_listen(
 
         menu_navigator::menu::LIGHT.max_light_p.set(stored_data.light.max_light_p.get());
 
-        menu_navigator::menu::SYSTEM.curent_time.set(stored_data.system.curent_time.get().0, stored_data.system.curent_time.get().1);
+        // menu_navigator::menu::SYSTEM.curent_time.set(stored_data.system.curent_time.get().0, stored_data.system.curent_time.get().1);
 
     }
 

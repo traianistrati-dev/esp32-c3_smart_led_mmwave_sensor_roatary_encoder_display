@@ -18,6 +18,9 @@ pub struct ValueTime {
     #[serde(with = "atomic_u8_serde")]
     minute: DataTypeAtomic,
 
+    #[serde(with = "atomic_u8_serde")]
+    seconds: DataTypeAtomic,
+
     pub config_min: ValueBool
 }
 
@@ -26,21 +29,22 @@ pub struct ValueTime {
 impl ValueTime {
     pub const fn new() -> Self{
 
-        Self{hour: DataTypeAtomic::new(0), minute: DataTypeAtomic::new(0), config_min: ValueBool::new_false()}
+        Self{hour: DataTypeAtomic::new(0), minute: DataTypeAtomic::new(0), seconds: DataTypeAtomic::new(0), config_min: ValueBool::new_false()}
     }
 
     pub fn new_from(hour: DataTypePrimitive, minute: DataTypePrimitive) -> Self{
 
-        Self{hour: DataTypeAtomic::new(hour), minute: DataTypeAtomic::new(minute), config_min: ValueBool::new_false()}
+        Self{hour: DataTypeAtomic::new(hour), minute: DataTypeAtomic::new(minute), seconds: DataTypeAtomic::new(0), config_min: ValueBool::new_false()}
     }
 
-    pub fn get(&self) -> (DataTypePrimitive, DataTypePrimitive) {
-        (self.hour.load(Ordering::Relaxed), self.minute.load(Ordering::Relaxed))
+    pub fn get(&self) -> (DataTypePrimitive, DataTypePrimitive, DataTypePrimitive) {
+        (self.hour.load(Ordering::Relaxed), self.minute.load(Ordering::Relaxed), self.seconds.load(Ordering::Relaxed))
     }
 
     pub fn set(&self, hour: DataTypePrimitive, minute: DataTypePrimitive) {
         self.hour.store(hour, Ordering::Relaxed);
         self.minute.store(minute, Ordering::Relaxed);
+        self.seconds.store(0, Ordering::Relaxed);
     }
 
     pub fn set_minute(&self, minute: DataTypePrimitive) {
@@ -49,6 +53,10 @@ impl ValueTime {
 
     pub fn set_hour(&self, hour: DataTypePrimitive) {
         self.hour.store(hour, Ordering::Relaxed);
+    }
+
+    pub fn set_seconds(&self, seconds: DataTypePrimitive) {
+        self.seconds.store(seconds, Ordering::Relaxed);
     }
 
 
@@ -69,33 +77,44 @@ impl ValueTime {
     }
 
 
-    pub fn inc_hour(&self) {
-        let (hour, _) = self.get();
-        if hour < 23 {
-            self.set_hour(hour.saturating_add(1))
+    pub fn inc_seconds(&self) {
+        let (_, _, seconds) = self.get();
+        self.set_seconds((seconds + 1) % 60);
+
+        if ((seconds + 1) % 60) == 0 {
+            self.inc_minute();
+
+            if self.get().1 == 0{
+                self.inc_hour();
+            }
         }
+
     }
 
-    pub fn inc_minute(&self) {
-        let (_, min) = self.get();
-        if min < 59{
-            self.set_minute(min.saturating_add(1))
-        }
+    pub fn inc_hour(&self) {
+        let (hour, _, _) = self.get();
+        self.set_hour((hour + 1) % 24);
     }
 
     pub fn dec_hour(&self) {
-        let (hour, _) = self.get();
-        self.set_hour(hour.saturating_sub(1))
+        let (hour, _, _) = self.get();
+        self.set_hour((hour + 23) % 24);
     }
+
+    pub fn inc_minute(&self) {
+        let (_, min, _) = self.get();
+        self.set_minute((min + 1) % 60)
+    }
+
 
     pub fn dec_minute(&self) {
-        let (_, min) = self.get();
-        self.set_minute(min.saturating_sub(1))
+        let (_, min, _) = self.get();
+        self.set_minute((min + 59) % 60);
     }
 
-    pub fn toggle_config_minute(&self){
-        self.config_min.set(!self.config_min.get());
-    }
+    // pub fn toggle_config_minute(&self){
+    // self.config_min.set(!self.config_min.get());
+    // }
 
 
 
